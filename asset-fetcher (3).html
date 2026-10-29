@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Asset Fetcher</title>
+<style>
+:root{--bg:#fafafa;--cd:#fff;--tx:#111;--mu:#6b7280;--bd:#e5e7eb;--ac:#111;--at:#fff}
+@media(prefers-color-scheme:dark){:root{--bg:#0b0b0c;--cd:#141416;--tx:#f4f4f5;--mu:#9ca3af;--bd:#27272a;--ac:#f4f4f5;--at:#0b0b0c}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.w{max-width:880px;margin:0 auto;padding:36px 16px 72px}
+h1{font-size:22px;margin:0 0 4px;font-weight:650}.sub{color:var(--mu);margin:0 0 20px}
+.box,.card{background:var(--cd);border:1px solid var(--bd);border-radius:14px;padding:14px}
+textarea,input,select{font:inherit;color:inherit;background:transparent}
+textarea{width:100%;min-height:46px;resize:vertical;border:0;outline:0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}.sp{flex:1}
+select,input{border:1px solid var(--bd);border-radius:10px;padding:7px 10px;outline:0}
+.chip input{display:none}.chip span{display:block;padding:6px 12px;border:1px solid var(--bd);border-radius:99px;cursor:pointer;color:var(--mu);user-select:none}
+.chip input:checked+span{background:var(--ac);color:var(--at);border-color:var(--ac)}
+button{font:inherit;border:1px solid var(--bd);background:transparent;color:inherit;border-radius:10px;padding:6px 12px;cursor:pointer}
+button.p{background:var(--ac);color:var(--at);border-color:var(--ac);padding:8px 20px;font-weight:600}button:disabled{opacity:.5}
+details{margin-top:10px;color:var(--mu);font-size:13px}details input{width:100%;margin-top:6px}
+#res{display:grid;gap:14px;margin-top:18px}.card{content-visibility:auto;contain-intrinsic-size:auto 300px}
+.card h2{margin:0;font-size:17px}.card .l{color:var(--mu);font-size:13px;word-break:break-all}.card a{color:inherit}
+.sec{margin-top:14px}.sec h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--mu)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+.tile{margin:0;border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+.tile img{width:100%;aspect-ratio:16/9;object-fit:contain;background:var(--bd);display:block}
+.tile div{display:flex;gap:6px;align-items:center;padding:6px 8px;font-size:12px;color:var(--mu)}
+.tile button{padding:3px 9px;font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:14px}td{padding:5px 0;border-top:1px solid var(--bd);vertical-align:top}
+td:first-child{color:var(--mu);width:32%;padding-right:10px}td:last-child{word-break:break-word;white-space:pre-wrap}
+.n{color:var(--mu);font-size:13px;margin-top:8px}.err{color:#dc2626}
+</style></head><body><div class="w">
+<h1>Asset Fetcher</h1><p class="sub">Fetch thumbnails, banners, icons, info &amp; metadata from YouTube, Roblox, and Discord.</p>
+<div class="box">
+<textarea id="in" placeholder="Paste URLs (YouTube, Roblox, Discord), one per line…" autofocus></textarea>
+<div class="row">
+<select id="hint" title="For bare IDs / usernames without a URL"><option value="">Auto-detect</option><option value="yt">YouTube (video ID)</option><option value="game">Roblox Game</option><option value="group">Roblox Group</option><option value="user">Roblox User</option><option value="dcuser">Discord User (ID)</option><option value="dcserver">Discord Server (invite/ID)</option></select>
+<label class="chip"><input type="checkbox" id="o_thumb" checked><span>Thumbnail</span></label>
+<label class="chip"><input type="checkbox" id="o_banner"><span>Banner</span></label>
+<label class="chip"><input type="checkbox" id="o_icon"><span>Icon</span></label>
+<label class="chip"><input type="checkbox" id="o_info"><span>Info</span></label>
+<label class="chip"><input type="checkbox" id="o_meta"><span>Metadata</span></label>
+<span class="sp"></span><button class="p" id="go">Fetch</button></div>
+<details><summary>Settings</summary>
+<input id="key" placeholder="YouTube Data API v3 key (optional; required for channels, banners, channel icons &amp; full metadata)">
+<input id="px" placeholder="Roblox proxy domain (default: roproxy.com)"><input id="dt" type="password" placeholder="Discord bot token (optional; makes user lookup more reliable, stored locally)"></details></div>
+<div id="res"></div></div>
+<script>
+const $=s=>document.querySelector(s),YT='https://www.googleapis.com/youtube/v3';
+const S={g:k=>{try{return localStorage.getItem(k)||''}catch{return''}},s:(k,v)=>{try{localStorage.setItem(k,v)}catch{}}};
+$('#key').value=S.g('yk');$('#px').value=S.g('px');
+$('#key').onchange=e=>S.s('yk',e.target.value.trim());$('#px').onchange=e=>S.s('px',e.target.value.trim());$('#dt').value=S.g('dt');$('#dt').onchange=e=>S.s('dt',e.target.value.trim());
+const E=(t,c,...k)=>{const e=document.createElement(t);if(c)e.className=c;e.append(...k);return e};
+const fmt=n=>n==null||n===''?'—':isNaN(n)?n:Number(n).toLocaleString('en-US');
+const dt=s=>s?new Date(s).toLocaleString('en-US',{dateStyle:'long',timeStyle:'short'}):'—';
+const dur=s=>{const m=/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(s||'');if(!m)return'—';return [m[1],m[2]||0,m[3]||0].filter(x=>x!==undefined).map((x,i)=>i?String(x).padStart(2,'0'):x).join(':')};
+const rb=s=>`https://${s}.${S.g('px')||'roproxy.com'}`;
+let ctl;const cache=new Map();
+const j=async(u,o)=>{const k=o?null:u;if(k&&cache.has(k))return cache.get(k);const r=await fetch(u,{...o,signal:ctl.signal});if(!r.ok)throw Error('HTTP '+r.status+' — '+new URL(u).hostname);const d=await r.json();if(k)cache.set(k,d);return d};
+
+function parse(raw,hint){
+ const mm=raw.trim().match(/^<@!?(\d{15,22})>$/);if(mm)return{p:'dc',t:'user',id:mm[1]};
+ let s=raw.trim().replace(/^<|>$/g,'');
+ const m=s.match(/(?:https?:\/\/)?(?:[\w-]+\.)+[a-z]{2,}(?:[/?#]\S*)?/i);
+ if(m&&!/^\d+$/.test(s)&&!s.startsWith('@'))s=m[0].replace(/[).,;]+$/,'');
+ const vid=/^[\w-]{11}$/,num=/^\d+$/,V=id=>({p:'yt',t:'video',id}),Sh=id=>({p:'yt',t:'short',id});
+ const C=q=>({p:'yt',t:'channel',q}),R=(t,id)=>({p:'rb',t,id});
+ let u;try{u=new URL(/^[a-z]+:\/\//i.test(s)?s:'https://'+s)}catch{}
+ if(u&&/\.[a-z]{2,}$/i.test(u.hostname)&&!num.test(s)&&!s.startsWith('@')){
+  const h=u.hostname.toLowerCase(),q=u.searchParams;
+  const sg=u.pathname.split('/').filter(Boolean).map(x=>{try{return decodeURIComponent(x)}catch{return x}});
+  const a=sg[0]||'',b=sg[1]||'';
+  if(h==='youtu.be'){if(vid.test(a))return V(a)}
+  else if(/(^|\.)(youtube\.com|youtube-nocookie\.com)$/.test(h)){
+   if(['attribution_link','oembed','redirect'].includes(a)){const n=q.get('u')||q.get('url')||q.get('q');if(n)try{return parse(new URL(n,'https://www.youtube.com').href,hint)}catch{}}
+   const v=q.get('v');
+   if(vid.test(v||'')&&(a==='watch'||a===''))return V(v);
+   if(a==='shorts'&&vid.test(b))return Sh(b);
+   if(['embed','live','v','e'].includes(a)&&vid.test(b))return V(b);
+   if(a[0]==='@')return C('forHandle='+encodeURIComponent(a));
+   if(a==='channel'&&b)return C('id='+b);
+   if(a==='user'&&b)return C('forUsername='+encodeURIComponent(b));
+   if(a==='c'&&b)return C('forHandle='+encodeURIComponent('@'+b));
+   if(a==='playlist')throw Error('Playlists are not supported yet.');
+   if(a&&!['feed','results','hashtag','clip','post','gaming','watch','shorts'].includes(a))return C('forHandle='+encodeURIComponent('@'+a));
+  }
+  else if(/(^|\.)(discord\.com|discordapp\.com|discord\.gg|dsc\.gg)$/.test(h)){
+   const D=(t,id)=>({p:'dc',t,id});
+   if(/(^|\.)(discord\.gg|dsc\.gg)$/.test(h)){const c=a==='invite'?b:a;if(c)return D('server',c)}
+   if(a==='invite'&&b)return D('server',b);
+   if(a==='users'&&num.test(b))return D('user',b);
+   if(a==='channels'&&num.test(b))return D('server',b);
+   if(a==='widget'&&num.test(q.get('id')||''))return D('server',q.get('id'));
+   if(a==='channels'&&b==='@me')throw Error('DM links cannot be used. Use a server invite link or a user ID.');
+  }
+  else if(/(^|\.)roblox\.com$/.test(h)){
+   const L=sg.map(x=>x.toLowerCase());
+   const at=(...k)=>{for(const x of k){const i=L.indexOf(x);if(i>=0&&num.test(sg[i+1]||''))return sg[i+1]}};
+   const pick=(...k)=>{for(const x of k){const n=[...q.keys()].find(y=>y.toLowerCase()===x);if(n&&q.get(n))return q.get(n)}};
+   let id;
+   if(id=at('games','game')||pick('placeid'))return R('game',id);
+   if(id=at('groups','communities','group')||pick('gid','groupid'))return R('group',id);
+   if(id=pick('username'))return R('user',id);
+   if(id=at('users','user')||pick('userid')||(L[0]==='user.aspx'&&pick('id')))return R('user',id);
+   if(L.some(x=>x.startsWith('share')))throw Error('Roblox share links cannot be parsed. Open the link, then copy the actual game/group/profile URL.');
+  }
+ }
+ if(s.startsWith('@'))return C('forHandle='+encodeURIComponent(s));
+ if(/^UC[\w-]{22}$/.test(s))return C('id='+s);
+ if(hint==='yt'&&vid.test(s))return V(s);
+ if(['game','group','user'].includes(hint)&&s)return R(hint,s);
+ if(hint==='dcuser'&&s)return{p:'dc',t:'user',id:s};
+ if(hint==='dcserver'&&s)return{p:'dc',t:'server',id:s};
+ throw Error('Unrecognized format. Paste a full URL, or choose a type for bare IDs/usernames.');
+}
+
+async function ytVideo(p,o){
+ const id=p.id,key=S.g('yk'),link='https://www.youtube.com/watch?v='+id,D={sec:[],info:[],meta:[],notes:[],link,id,t:'Video '+id};
+ let v,ch,oe;
+ if(key){const d=await j(`${YT}/videos?part=snippet,contentDetails,statistics&id=${id}&key=${key}`);v=d.items?.[0];if(!v)throw Error('Video not found.');
+  if(o.icon||o.banner)ch=(await j(`${YT}/channels?part=snippet,brandingSettings&id=${v.snippet.channelId}&key=${key}`)).items?.[0]}
+ else if(o.info){const q=encodeURIComponent(link);try{oe=await j('https://www.youtube.com/oembed?format=json&url='+q)}catch{try{oe=await j('https://noembed.com/embed?url='+q)}catch{}}}
+ D.t=v?.snippet.title||oe?.title||D.t;D.s=(v?.snippet.channelTitle||oe?.author_name||'')+(p.t==='short'?' · Short':'');
+ if(o.thumb)D.sec.push({l:'Thumbnail',i:[['maxresdefault','1280×720'],['sddefault','640×480'],['hqdefault','480×360'],['mqdefault','320×180'],['default','120×90']].map(([n,d],k)=>({u:`https://i.ytimg.com/vi/${id}/${n}.jpg`,n,d,min:k<4?120:0}))});
+ if(o.icon||o.banner){if(!ch)D.notes.push('Channel icon/banner require an API key.');else{
+  if(o.banner&&ch.brandingSettings?.image?.bannerExternalUrl)D.sec.push({l:'Channel banner',i:[{u:ch.brandingSettings.image.bannerExternalUrl+'=w2120',n:'banner',d:''}]});
+  if(o.icon)D.sec.push({l:'Channel icon',i:[{u:ch.snippet.thumbnails.high.url,n:'icon',d:''}]})}}
+ if(o.info)D.info=[['Title',D.t],['Channel',D.s.replace(' · Short','')],['Channel URL',v?`https://www.youtube.com/channel/${v.snippet.channelId}`:oe?.author_url],['Type',p.t==='short'?'Short':'Video'],['ID',id]];
+ if(o.meta){if(!v)D.notes.push('Full metadata requires an API key.');else{const s=v.snippet,c=v.contentDetails,x=v.statistics;
+  D.meta=[['Duration',dur(c.duration)],['Published',dt(s.publishedAt)],['Views',fmt(x.viewCount)],['Likes',fmt(x.likeCount)],['Comments',fmt(x.commentCount)],['Quality',c.definition?.toUpperCase()],['Language',s.defaultAudioLanguage||s.defaultLanguage],['Broadcast',s.liveBroadcastContent],['Tags',(s.tags||[]).join(', ')||'—'],['Description',(s.description||'').slice(0,700)]]}}
+ return D}
+
+async function ytChannel(p,o){
+ const key=S.g('yk');if(!key)throw Error('Channels require a YouTube Data API key (open Settings).');
+ const d=await j(`${YT}/channels?part=snippet,statistics,brandingSettings&${p.q}&key=${key}`),c=d.items?.[0];if(!c)throw Error('Channel not found.');
+ const s=c.snippet,x=c.statistics,D={sec:[],info:[],meta:[],notes:[],t:s.title,s:s.customUrl||'',link:'https://www.youtube.com/channel/'+c.id,id:c.id};
+ const bn=c.brandingSettings?.image?.bannerExternalUrl;
+ if(o.banner||o.thumb){if(bn)D.sec.push({l:'Banner',i:[{u:bn+'=w2120',n:'banner',d:''}]});else D.notes.push('Channel has no banner.')}
+ if(o.icon||o.thumb)D.sec.push({l:'Icon',i:[{u:s.thumbnails.high.url,n:'icon',d:''}]});
+ if(o.info)D.info=[['Name',s.title],['Handle',s.customUrl],['Description',(s.description||'').slice(0,700)],['Country',s.country]];
+ if(o.meta)D.meta=[['ID',c.id],['Created',dt(s.publishedAt)],['Subscribers',x.hiddenSubscriberCount?'Hidden':fmt(x.subscriberCount)],['Video',fmt(x.videoCount)],['Views',fmt(x.viewCount)]];
+ return D}
+
+async function rbGame(p,o){
+ let pid=p.id,u=pid;
+ if(!/^\d+$/.test(pid))throw Error('Game ID must be numeric.');
+ try{u=(await j(rb('apis')+`/universes/v1/places/${pid}/universe`)).universeId}catch{}
+ if(!u)throw Error('Universe not found.');
+ const need=o.info||o.meta||true,[g,th,ic]=await Promise.all([
+  j(rb('games')+`/v1/games?universeIds=${u}`),
+  o.thumb?j(rb('thumbnails')+`/v1/games/multiget/thumbnails?universeIds=${u}&countPerUniverse=10&size=768x432&format=Png&defaults=true`):0,
+  o.icon?j(rb('thumbnails')+`/v1/games/icons?universeIds=${u}&size=512x512&format=Png&returnPolicy=PlaceHolder`):0]);
+ const x=g.data?.[0];if(!x)throw Error('Game not found.');
+ const D={sec:[],info:[],meta:[],notes:[],t:x.name,s:'by '+(x.creator?.name||'?'),link:'https://www.roblox.com/games/'+pid,id:pid};
+ if(th)D.sec.push({l:'Game thumbnails',i:(th.data?.[0]?.thumbnails||[]).map((t,k)=>({u:t.imageUrl,n:'thumb'+(k+1),d:'768×432'}))});
+ if(ic)D.sec.push({l:'Game icon',i:[{u:ic.data[0].imageUrl,n:'icon',d:'512×512'}]});
+ if(o.banner)D.notes.push('Roblox games have no banner.');
+ if(o.info)D.info=[['Name',x.name],['Creator',x.creator?.name+' ('+x.creator?.type+')'],['Description',(x.description||'').slice(0,700)]];
+ if(o.meta)D.meta=[['Place ID',pid],['Universe ID',u],['Playing',fmt(x.playing)],['Visits',fmt(x.visits)],['Favorites',fmt(x.favoritedCount)],['Genre',x.genre],['Max players',fmt(x.maxPlayers)],['Created',dt(x.created)],['Updated',dt(x.updated)]];
+ return D}
+
+async function rbGroup(p,o){
+ const id=p.id;if(!/^\d+$/.test(id))throw Error('Group ID must be numeric.');
+ const [g,ic]=await Promise.all([j(rb('groups')+`/v1/groups/${id}`),o.icon||o.thumb?j(rb('thumbnails')+`/v1/groups/icons?groupIds=${id}&size=420x420&format=Png`):0]);
+ const D={sec:[],info:[],meta:[],notes:[],t:g.name,s:'Roblox Group',link:'https://www.roblox.com/communities/'+id,id};
+ if(ic)D.sec.push({l:'Group icon',i:[{u:ic.data[0].imageUrl,n:'icon',d:'420×420'}]});
+ if(o.banner)D.notes.push('Roblox groups have no banner.');
+ if(o.info)D.info=[['Name',g.name],['Owner',g.owner?.username||g.owner?.displayName||'—'],['Description',(g.description||'').slice(0,700)],['Shout',g.shout?.body||'—']];
+ if(o.meta)D.meta=[['ID',id],['Members',fmt(g.memberCount)],['Public entry',g.publicEntryAllowed?'Yes':'No'],['Locked',g.isLocked?'Yes':'No'],['Verified',g.hasVerifiedBadge?'Yes':'No']];
+ return D}
+
+async function rbUser(p,o){
+ let id=p.id;
+ if(!/^\d+$/.test(id)){const r=await j(rb('users')+'/v1/usernames/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({usernames:[id],excludeBannedUsers:false})});if(!r.data?.[0])throw Error('Username not found.');id=r.data[0].id}
+ const T=(k,s)=>j(rb('thumbnails')+`/v1/users/${k}?userIds=${id}&size=${s}&format=Png`);
+ const cnt=k=>j(rb('friends')+`/v1/users/${id}/${k}/count`).then(r=>r.count).catch(()=>null);
+ const [u,av,hs,fl,fr]=await Promise.all([j(rb('users')+`/v1/users/${id}`),o.thumb?T('avatar','720x720'):0,o.icon?T('avatar-headshot','420x420'):0,o.meta?cnt('followers'):0,o.meta?cnt('friends'):0]);
+ const D={sec:[],info:[],meta:[],notes:[],t:u.displayName,s:'@'+u.name,link:'https://www.roblox.com/users/'+id+'/profile',id};
+ if(av)D.sec.push({l:'Avatar',i:[{u:av.data[0].imageUrl,n:'avatar',d:'720×720'}]});
+ if(hs)D.sec.push({l:'Headshot (icon)',i:[{u:hs.data[0].imageUrl,n:'headshot',d:'420×420'}]});
+ if(o.banner)D.notes.push('Roblox users have no banner.');
+ if(o.info)D.info=[['Display name',u.displayName],['Username',u.name],['Bio',(u.description||'').slice(0,700)||'—']];
+ if(o.meta)D.meta=[['User ID',id],['Created',dt(u.created)],['Followers',fmt(fl)],['Friends',fmt(fr)],['Banned',u.isBanned?'Yes':'No'],['Verified',u.hasVerifiedBadge?'Yes':'No']];
+ return D}
+
+const SF=id=>new Date(Number((BigInt(id)>>22n)+1420070400000n)).toISOString();
+const ci=(path,h,n)=>[...(h.startsWith('a_')?[{u:`https://cdn.discordapp.com/${path}/${h}.gif?size=1024`,n:n+'-gif',d:'GIF'}]:[]),{u:`https://cdn.discordapp.com/${path}/${h}.png?size=1024`,n,d:'PNG'}];
+const BADGES={1:'Discord Staff',2:'Partner',4:'HypeSquad Events',8:'Bug Hunter',64:'HypeSquad Bravery',128:'HypeSquad Brilliance',256:'HypeSquad Balance',512:'Early Supporter',16384:'Bug Hunter Lv2',131072:'Early Verified Bot Dev',4194304:'Active Developer'};
+async function dcUser(p,o){
+ const id=p.id,tk=S.g('dt');let x;
+ if(!/^\d{15,22}$/.test(id))throw Error('Discord user ID must be numeric (enable Developer Mode, then Copy User ID).');
+ if(tk)try{const r=await j(`https://discord.com/api/v10/users/${id}`,{headers:{Authorization:'Bot '+tk}});
+  x={u:r.username,g:r.global_name,a:r.avatar,b:r.banner,c:r.banner_color,ac:r.accent_color,bot:r.bot,bd:Object.entries(BADGES).filter(([k])=>r.public_flags&k).map(e=>e[1]).join(', ')}}catch{}
+ if(!x)try{const r=await j('https://discordlookup.mesalytic.moe/v1/user/'+id);
+  x={u:r.username,g:r.global_name,a:r.avatar?.id,b:r.banner?.id,c:r.banner_color,ac:r.accent_color,bot:false,bd:(r.badges||[]).join(', ')}}
+  catch{throw Error('User not found, or the lookup service is unavailable. For more reliable results, add a bot token in Settings.')}
+ const D={sec:[],info:[],meta:[],notes:[],t:x.g||x.u,s:'@'+x.u,link:'https://discord.com/users/'+id,id};
+ if(o.icon||o.thumb)D.sec.push({l:'Avatar',i:x.a?ci('avatars/'+id,x.a,'avatar'):[{u:`https://cdn.discordapp.com/embed/avatars/${Number((BigInt(id)>>22n)%6n)}.png`,n:'avatar-default',d:'Default'}]});
+ if(o.banner){if(x.b)D.sec.push({l:'Banner',i:ci('banners/'+id,x.b,'banner')});else D.notes.push('User has no banner image'+(x.c?' (color: '+x.c+').':'.'))}
+ if(o.info)D.info=[['Display name',x.g||x.u],['Username',x.u],['ID',id],['Type',x.bot?'Bot':'User']];
+ if(o.meta)D.meta=[['Created',dt(SF(id))],['Badge',x.bd||'—'],['Accent color',x.ac!=null?'#'+Number(x.ac).toString(16).padStart(6,'0'):x.c],['Animated avatar',x.a?(x.a.startsWith('a_')?'Yes':'No'):'—']];
+ return D}
+async function dcServer(p,o){
+ let code=p.id,w;
+ if(/^\d{15,22}$/.test(code)){
+  try{w=await j(`https://discord.com/api/guilds/${code}/widget.json`)}catch{throw Error('Server widget is disabled. Use an invite link (discord.gg/…) to fetch server data.')}
+  code=w.instant_invite?.split('/').pop();
+  if(!code)return{sec:[],info:o.info?[['Name',w.name]]:[],meta:o.meta?[['Server ID',p.id],['Created',dt(SF(p.id))],['Online',fmt(w.presence_count)]]:[],notes:['The widget has no invite, so the icon and banner are unavailable.'],t:w.name,s:'Discord Server',link:'https://discord.com/channels/'+p.id,id:p.id}}
+ const inv=await j(`https://discord.com/api/v10/invites/${encodeURIComponent(code)}?with_counts=true&with_expiration=true`),g=inv.guild;
+ if(!g)throw Error('This invite is not for a server (possibly a group DM invite).');
+ const D={sec:[],info:[],meta:[],notes:[],t:g.name,s:'Discord Server',link:'https://discord.gg/'+code,id:g.id};
+ if(o.icon||o.thumb){if(g.icon)D.sec.push({l:'Server icon',i:ci('icons/'+g.id,g.icon,'icon')});else D.notes.push('Server has no icon.')}
+ if(o.banner){if(g.banner)D.sec.push({l:'Server banner',i:ci('banners/'+g.id,g.banner,'banner')});else D.notes.push('Server has no banner.')}
+ if(o.thumb&&g.splash)D.sec.push({l:'Invite splash',i:ci('splashes/'+g.id,g.splash,'splash')});
+ if(o.info)D.info=[['Name',g.name],['Description',g.description||'—'],['Invite link','https://discord.gg/'+code],['Vanity',g.vanity_url_code?'discord.gg/'+g.vanity_url_code:'—']];
+ if(o.meta)D.meta=[['Server ID',g.id],['Created',dt(SF(g.id))],['Members (approx.)',fmt(inv.approximate_member_count)],['Online (approx.)',fmt(inv.approximate_presence_count)],['Boost',fmt(g.premium_subscription_count)],['Verification',['None','Low','Medium','High','Very high'][g.verification_level]||g.verification_level],['Features',(g.features||[]).join(', ')||'—'],['Invite channel',inv.channel?.name],['Inviter',inv.inviter?.username],['Expires',inv.expires_at?dt(inv.expires_at):'Never']];
+ return D}
+
+async function dl(u,name,b){
+ const t=b.textContent;b.textContent='…';b.disabled=true;
+ const get=async x=>{const r=await fetch(x);if(!r.ok)throw 0;return r.blob()};
+ let bl;try{bl=await get(u)}catch{try{bl=await get('https://wsrv.nl/?url='+encodeURIComponent(u))}catch{}}
+ if(bl){const a=E('a');a.href=URL.createObjectURL(bl);a.download=name+'.'+((bl.type.split('/')[1]||'jpg').replace('jpeg','jpg').split('+')[0]);a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4e3)}
+ else window.open(u,'_blank','noopener');
+ b.textContent=t;b.disabled=false}
+
+function tile(it,base){
+ const f=E('figure','tile'),img=new Image(),cap=E('span','sp',it.d||''),b=E('button','','Download');
+ img.loading='lazy';img.decoding='async';img.alt=it.n;img.referrerPolicy='no-referrer';
+ img.onload=()=>{if(it.min&&img.naturalWidth<=it.min)return f.remove();cap.textContent=`${it.d?it.d+' · ':''}${img.naturalWidth}×${img.naturalHeight}`};
+ img.onerror=()=>f.remove();img.src=it.u;b.onclick=()=>dl(it.u,base+'-'+it.n,b);
+ const a=E('a','','Open');a.href=it.u;a.target='_blank';a.rel='noopener';a.style.cssText='font-size:12px;color:inherit';
+ f.append(img,E('div','',cap,a,b));return f}
+
+function paint(card,D){
+ card.textContent='';
+ const a=E('a','',D.t);a.href=D.link;a.target='_blank';a.rel='noopener';
+ card.append(E('h2','',a),E('div','l',D.s||''));
+ const base=(D.t||'asset').replace(/[^\w\u00C0-\uFFFF]+/g,'_').slice(0,40);
+ for(const s of D.sec){if(!s.i.length)continue;const g=E('div','grid');s.i.forEach(i=>g.append(tile(i,base)));card.append(E('div','sec',E('h3','',s.l),g))}
+ for(const [l,rows] of [['Info',D.info],['Metadata',D.meta]]){const r=rows.filter(x=>x[1]!=null&&x[1]!=='');if(!r.length)continue;
+  const t=E('table');r.forEach(([k,v])=>t.append(E('tr','',E('td','',k),E('td','',String(v)))));card.append(E('div','sec',E('h3','',l),t))}
+ D.notes.forEach(n=>card.append(E('div','n',n)))}
+
+async function run(){
+ ctl?.abort();ctl=new AbortController();
+ const o=Object.fromEntries(['thumb','banner','icon','info','meta'].map(k=>[k,$('#o_'+k).checked]));
+ const lines=$('#in').value.split(/\n+/).map(s=>s.trim()).filter(Boolean).slice(0,10),res=$('#res');
+ res.textContent='';if(!lines.length)return;
+ if(!Object.values(o).some(Boolean)){res.append(E('div','card err','Select at least one option.'));return}
+ $('#go').disabled=true;
+ await Promise.all(lines.map(async s=>{
+  const card=E('div','card',E('span','l','Loading… '+s));res.append(card);
+  try{const p=parse(s,$('#hint').value);
+   const D=await({'yt:video':ytVideo,'yt:short':ytVideo,'yt:channel':ytChannel,'rb:game':rbGame,'rb:group':rbGroup,'rb:user':rbUser,'dc:user':dcUser,'dc:server':dcServer}[p.p+':'+p.t])(p,o);paint(card,D)}
+  catch(e){if(e.name!=='AbortError'){card.textContent='';card.append(E('div','l',s),E('div','err',e.message))}}}));
+ $('#go').disabled=false}
+$('#go').onclick=run;
+$('#in').onkeydown=e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();run()}};
+</script></body></html>
